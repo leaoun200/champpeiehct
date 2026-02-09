@@ -122,7 +122,7 @@ export default function PublicProfile() {
         <div className="flex items-center space-x-3 mb-3">
           <Avatar className="w-16 h-16">
             <AvatarImage 
-              src={getAvatarUrl(profile.id, profile.profileImageUrl, profile.firstName || profile.username)} 
+              src={profile.profileImageUrl || profile.profileImage || getAvatarUrl(profile.id, profile.profileImageUrl, profile.firstName || profile.username)} 
               alt={profile.firstName || profile.username || 'User'} 
             />
             <AvatarFallback className="text-lg">
@@ -193,9 +193,9 @@ export default function PublicProfile() {
             <div className="flex flex-col md:flex-row items-center md:items-start space-y-6 md:space-y-0 md:space-x-8">
               <Avatar className="w-32 h-32">
                 <AvatarImage 
-                  src={getAvatarUrl(profile.id, profile.profileImageUrl, profile.firstName || profile.username)} 
-                  alt={profile.firstName || profile.username || 'User'} 
-                />
+                    src={profile.profileImageUrl || profile.profileImage || getAvatarUrl(profile.id, profile.profileImageUrl, profile.firstName || profile.username)} 
+                    alt={profile.firstName || profile.username || 'User'} 
+                  />
                 <AvatarFallback className="text-2xl">
                   {(profile.firstName?.[0] || profile.username?.[0] || 'U').toUpperCase()}
                 </AvatarFallback>

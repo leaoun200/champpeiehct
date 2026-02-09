@@ -456,6 +456,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ userId, onClose }) => {
                   <UserAvatar
                     userId={profile.id || userId}
                     username={profile.username}
+                    src={profile.profileImageUrl}
                     size={64}
                     className="w-14 h-14 md:w-16 md:h-16 border-2 md:border-3 border-white dark:border-slate-900 shadow-sm"
                   />

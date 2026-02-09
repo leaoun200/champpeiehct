@@ -17,6 +17,7 @@ interface Creator {
   avatar?: string;
   username?: string;
   stats: any;
+  profileImageUrl?: string;
 }
 
 interface Event {
@@ -35,6 +36,7 @@ interface Event {
     entry_amount?: number;
   };
   participants?: Array<{ avatar?: string }>;
+  participants?: Array<{ id?: string; username?: string; avatar?: string; profileImageUrl?: string }>;
   current_participants?: number;
   display_participant_boost?: number;
   max_participants: number;
@@ -188,6 +190,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onChatClick }) => {
                 <div className="overflow-hidden rounded-full h-5 w-5 flex-shrink-0">
                   <img
                     src={
+                      event.creator.profileImageUrl ||
                       event.creator.avatar_url ||
                       event.creator.avatar ||
                       getAvatarUrl(event.creator.id, event.creator.username)
@@ -244,6 +247,7 @@ const EventCard: React.FC<EventCardProps> = ({ event, onChatClick }) => {
                   <div className="overflow-hidden rounded-full h-5 w-5 flex items-center justify-center">
                     <img
                       src={
+                        event.participants?.[0]?.profileImageUrl ||
                         event.participants?.[0]?.avatar ||
                         getAvatarUrl(event.participants?.[0]?.id || `participant-${event.id}`, event.participants?.[0]?.username)
                       }

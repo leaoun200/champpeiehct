@@ -139,6 +139,7 @@ export default function Leaderboard() {
                   <UserAvatar
                     userId={user.id}
                     username={user.username}
+                    src={user?.profileImageUrl}
                     size={28}
                     className="h-7 w-7"
                   />
@@ -207,6 +208,7 @@ export default function Leaderboard() {
                           <UserAvatar
                             userId={player.id}
                             username={player.username}
+                            src={player.profileImage || player.profileImageUrl}
                             size={40}
                             className="h-10 w-10"
                           />
@@ -288,6 +290,7 @@ export default function Leaderboard() {
                         <UserAvatar
                           userId={player.id}
                           username={player.username}
+                          src={player.profileImage || player.profileImageUrl}
                           size={32}
                           className="h-8 w-8"
                         />

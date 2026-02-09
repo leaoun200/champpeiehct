@@ -967,6 +967,7 @@ export default function EventChatPage() {
                       <UserAvatar
                         userId={msgUser.id}
                         username={msgUser.username}
+                        src={msgUser.profileImageUrl || msgUser.profileImage || msgUser.avatarUrl}
                         size={24}
                         className="w-6 h-6"
                       />
@@ -1122,6 +1123,7 @@ export default function EventChatPage() {
                     <UserAvatar
                       userId={message.user.id}
                       username={message.user.username}
+                      src={message.user?.profileImageUrl || message.user?.profileImage || message.user?.avatarUrl}
                       size={16}
                       className="w-4 h-4"
                     />
@@ -1193,6 +1195,7 @@ export default function EventChatPage() {
                     <UserAvatar
                       userId={participant.user.id}
                       username={participant.user.username}
+                      src={participant.user?.profileImageUrl || participant.user?.profileImage || participant.user?.avatarUrl}
                       size={20}
                       className="w-5 h-5"
                     />

@@ -117,7 +117,7 @@ export default function Profile() {
         pageType="profile"
         customTitle={`${displayName}'s Profile on Bantah`}
         customDescription={`Check out ${displayName}'s profile on Bantah - the social betting and challenges platform. Level ${user?.level || 1} player.`}
-        customImage={getAvatarUrl(user?.id, user?.username || displayName)}
+        customImage={userProfile?.profileImageUrl || user?.profileImageUrl || getAvatarUrl(user?.id, user?.username || displayName)}
       />
       <div className="min-h-screen theme-transition flex flex-col pb-[50px]">
         <div className="flex-1 flex flex-col items-center w-full">
@@ -134,7 +134,7 @@ export default function Profile() {
                   <div className="relative">
                     <Avatar className="w-24 h-24">
                       <AvatarImage
-                        src={getAvatarUrl(user?.id, user?.username || displayName)}
+                        src={userProfile?.profileImageUrl || user?.profileImageUrl || getAvatarUrl(user?.id, user?.username || displayName)}
                         alt={displayName}
                       />
                       <AvatarFallback className="text-2xl bg-primary/10 text-primary">

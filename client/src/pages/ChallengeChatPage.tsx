@@ -353,7 +353,7 @@ export default function ChallengeChatPage() {
                       <div key={m.id} className={`flex gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
                         {!isMe && (
                           <div className="flex-shrink-0">
-                            <UserAvatar userId={m.userId} username={m.user?.username} size={32} />
+                            <UserAvatar userId={m.userId} username={m.user?.username} src={m.user?.profileImageUrl || m.user?.profileImage || m.user?.avatarUrl} size={32} />
                           </div>
                         )}
                         <div className={`flex flex-col max-w-[80%] ${isMe ? 'items-end' : 'items-start'}`}>
@@ -427,7 +427,7 @@ export default function ChallengeChatPage() {
                     return (
                       <div key={m.entry?.id || m.entry?.userId || Math.random()} className="flex items-center gap-3 p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:shadow-sm transition-shadow">
                         <div className="flex items-center gap-3">
-                          <UserAvatar userId={user?.id} username={user?.username} size={40} />
+                          <UserAvatar userId={user?.id} username={user?.username} src={user?.profileImageUrl || user?.profileImage || user?.avatarUrl} size={40} />
                           <div className="flex flex-col">
                             <div className="font-medium text-sm text-slate-900 dark:text-slate-100">
                               {user?.firstName || user?.username || 'User'}
@@ -477,7 +477,7 @@ export default function ChallengeChatPage() {
                       <div key={event.id} className="flex gap-3 p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:shadow-sm transition-shadow">
                         <div className="flex-shrink-0 flex items-start pt-1">
                           {event.user ? (
-                            <UserAvatar userId={event.user.id} username={event.user.username} size={32} />
+                            <UserAvatar userId={event.user.id} username={event.user.username} src={event.user?.profileImageUrl || event.user?.profileImage || event.user?.avatarUrl} size={32} />
                           ) : (
                             <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
                               {getActivityIcon()}
@@ -487,15 +487,15 @@ export default function ChallengeChatPage() {
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-slate-900 dark:text-slate-100">
                             {event.user ? (
-                              <>
-                                <span className="font-medium">
-                                  {event.user.firstName || event.user.username || 'User'}
-                                </span>{' '}
-                                <span className="text-slate-600 dark:text-slate-400">{event.action}</span>
-                              </>
-                            ) : (
-                              <span className="text-slate-600 dark:text-slate-400 italic">{event.action}</span>
-                            )}
+                                  <>
+                                    <span className="font-medium">
+                                      {event.user.firstName || event.user.username || 'User'}
+                                    </span>{' '}
+                                    <span className="text-slate-600 dark:text-slate-400">{event.action}</span>
+                                  </>
+                                ) : (
+                                  <span className="text-slate-600 dark:text-slate-400 italic">{event.action}</span>
+                                )}
                           </p>
                           <span className="text-xs text-slate-500 dark:text-slate-400 mt-1 block">
                             {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}

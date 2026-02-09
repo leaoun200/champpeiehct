@@ -119,6 +119,7 @@ function UserCard({ user, onClose }: { user: MapUser; onClose: () => void }) {
             <UserAvatar 
               userId={user.id} 
               username={user.username || undefined} 
+              src={user.profileImageUrl || user.profileImage || user.avatarUrl}
               size={80} 
               className={`ring-4 ${zone.borderColor} ring-offset-2`}
             />
@@ -232,6 +233,7 @@ function ZoneSection({
             <UserAvatar 
               userId={user.id} 
               username={user.username || undefined} 
+              src={user.profileImageUrl || user.profileImage || user.avatarUrl}
               size={32 + Math.min((user.level || 1) * 2, 16)} 
               className="border-2 border-background shadow-sm"
             />

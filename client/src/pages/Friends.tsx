@@ -597,6 +597,7 @@ export default function Friends() {
                             <UserAvatar
                               userId={friendUser.id}
                               username={friendUser.username || (typeof friendUser.email === 'string' ? friendUser.email : friendUser.email?.address)}
+                              src={friendUser.profileImageUrl || friendUser.profileImage || friendUser.avatarUrl}
                               size={36}
                               className="w-9 h-9 border border-slate-100 dark:border-slate-800"
                             />
@@ -648,6 +649,7 @@ export default function Friends() {
                         <UserAvatar
                           userId={user.id}
                           username={user.username || (typeof user.email === 'string' ? user.email : user.email?.address)}
+                          src={user.profileImageUrl || user.profileImage || user.avatarUrl}
                           size={36}
                           className="w-9 h-9 border border-slate-100 dark:border-slate-800"
                         />
@@ -729,6 +731,7 @@ export default function Friends() {
                             <UserAvatar
                               userId={requesterUser.id}
                               username={requesterUser.username || (typeof requesterUser.email === 'string' ? requesterUser.email : requesterUser.email?.address)}
+                              src={requesterUser.profileImageUrl || requesterUser.profileImage || requesterUser.avatarUrl}
                               size={48}
                               className="w-12 h-12"
                             />
@@ -795,7 +798,7 @@ export default function Friends() {
                         <CardContent className="p-6">
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
-                              <UserAvatar userId={addresseeUser.id} username={addresseeUser.username || (typeof addresseeUser.email === 'string' ? addresseeUser.email : addresseeUser.email?.address)} size={48} className="w-12 h-12" />
+                              <UserAvatar userId={addresseeUser.id} username={addresseeUser.username || (typeof addresseeUser.email === 'string' ? addresseeUser.email : addresseeUser.email?.address)} src={addresseeUser.profileImageUrl || addresseeUser.profileImage || addresseeUser.avatarUrl} size={48} className="w-12 h-12" />
                               <div>
                                 <h3 className="font-semibold text-slate-900 dark:text-slate-100">{addresseeUser.username || addresseeUser.firstName}</h3>
                                 <p className="text-sm text-slate-600 dark:text-slate-400">Sent {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}</p>
@@ -833,6 +836,7 @@ export default function Friends() {
                   <UserAvatar
                     userId={selectedUser.id}
                     username={selectedUser.username}
+                    src={selectedUser.profileImageUrl || selectedUser.profileImage || selectedUser.avatarUrl}
                     size={24}
                     className="h-6 w-6"
                   />
@@ -877,6 +881,7 @@ export default function Friends() {
                   <UserAvatar
                     userId={selectedUser.id}
                     username={selectedUser.username}
+                    src={selectedUser.profileImageUrl || selectedUser.profileImage || selectedUser.avatarUrl}
                     size={28}
                     className="h-7 w-7"
                   />
