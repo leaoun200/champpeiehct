@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { usePrivy } from "@privy-io/react-auth";
 import { cn } from "@/lib/utils";
 import { getGlobalChannel } from "@/lib/pusher";
 import { MobileNavigation } from "@/components/MobileNavigation";
@@ -40,7 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 
 import { apiRequest } from "@/lib/queryClient";
-import { stakeAndCreateP2PChallengeClient } from '@/hooks/useBlockchainChallenge';
+import { useBlockchainChallenge } from '@/hooks/useBlockchainChallenge';
 import { parseUnits } from 'ethers';
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -87,6 +88,8 @@ function ChallengeCardSkeleton() {
 
 export default function Challenges() {
   const { user, getAccessToken } = useAuth();
+  const { createP2PChallenge } = useBlockchainChallenge(); // Get blockchain hook functions
+  
   // Dev-time Vite env checks
   useEffect(() => {
     try {
@@ -334,21 +337,61 @@ export default function Challenges() {
       // Get selected token address
       const selectedTokenAddress = TOKEN_ADDRESSES[formData.paymentToken];
 
-      console.log(`📝 Creating ${formData.paymentToken} challenge (OFF-CHAIN):`);
+      console.log(`� Creating ${formData.paymentToken} challenge (ON-CHAIN + DB):`);
       console.log(`   Amount: ${formData.amount} ${formData.paymentToken}`);
       console.log(`   Type: ${formData.challengeType}`);
       console.log(`   Settlement: ${formData.settlementMethod}`);
 
-      // NEW MODEL: Challenge creation is OFF-CHAIN only
-      // On-chain staking happens later via prepare-stake → sign → /accept-stake flow
+      // NEW MODEL: Challenge creation is ON-CHAIN FIRST, then DB saved
+      // User signs ONE transaction, challenge is created on-chain AND off-chain simultaneously
       toast({
-        title: "Creating Challenge",
-        description: "Setting up your challenge...",
+        title: "Preparing Transaction",
+        description: "Getting your wallet ready to sign...",
       });
 
-      // Step 2: Store challenge in database (OFF-CHAIN only)
+      // STEP 1: Create on-chain FIRST - this will prompt user to sign
+      let onchainTxHash = '';
+      try {
+        const stakeInWei = parseUnits(formData.amount.toString(), formData.paymentToken === 'ETH' ? 18 : 6).toString();
+        
+        console.log('📝 Initiating on-chain challenge creation...');
+        
+        if (formData.challengeType === 'open') {
+          // For OPEN challenges, use stakeAndCreateP2PChallengeClient
+          console.log('🌍 Creating OPEN challenge on-chain...');
+          const result = await stakeAndCreateP2PChallengeClient({
+            participantAddress: '0x0000000000000000000000000000000000000000', // Zero address for open
+            stakeAmountWei: stakeInWei,
+            paymentToken: selectedTokenAddress,
+            pointsReward: '100',
+            metadataURI: 'ipfs://bafytest',
+          });
+          onchainTxHash = result.transactionHash;
+          console.log(`✅ Open challenge created on-chain: ${onchainTxHash.slice(0,10)}...`);
+        } else {
+          // For DIRECT P2P challenges, use createP2PChallenge with specific opponent
+          console.log('👥 Creating DIRECT P2P challenge on-chain...');
+          if (!preSelectedUser?.walletAddress) {
+            throw new Error('No opponent selected. Please select a friend to challenge.');
+          }
+          const result = await createP2PChallenge({
+            opponentAddress: preSelectedUser.walletAddress,
+            stakeAmount: stakeInWei,
+            paymentToken: selectedTokenAddress,
+            pointsReward: '100',
+            metadataURI: 'ipfs://bafytest',
+          });
+          onchainTxHash = result.transactionHash;
+          console.log(`✅ P2P challenge created on-chain: ${onchainTxHash.slice(0,10)}...`);
+        }
+      } catch (e: any) {
+        console.error('❌ On-chain creation failed:', e?.message || e);
+        // If on-chain fails, the whole creation fails - no fallback to off-chain
+        throw new Error(`On-chain challenge creation failed: ${e?.message || e}`);
+      }
+
+      // STEP 2: Save to database with the transaction hash
       const requestBody = new FormData();
-      // Ensure opponentId is always sent as a string (avoid numeric/string mismatches)
       requestBody.append('opponentId', formData.challengeType === 'direct' ? String(preSelectedUser?.id || '') : '');
       requestBody.append('title', formData.title);
       requestBody.append('description', formData.description);
@@ -357,37 +400,13 @@ export default function Challenges() {
       requestBody.append('dueDate', formData.dueDate || '');
       requestBody.append('metadataURI', 'ipfs://bafytest');
       requestBody.append('challengeType', formData.challengeType);
-      requestBody.append('transactionHash', ''); // No tx hash for off-chain creation
+      requestBody.append('transactionHash', onchainTxHash); // NOW we have the tx hash!
       requestBody.append('side', formData.side);
-      requestBody.append('settlementType', formData.settlementMethod || 'voting');
       requestBody.append('settlementType', formData.settlementMethod || 'voting');
       if (formData.coverImage) {
         requestBody.append('coverImage', formData.coverImage);
       }
 
-      // If this is an open challenge, attempt creator single-call stake on-chain first
-      let onchainTxHash = '';
-      if (formData.challengeType === 'open') {
-        try {
-          const selectedTokenAddress = TOKEN_ADDRESSES[formData.paymentToken];
-          const stakeInWei = parseUnits(formData.amount.toString(), formData.paymentToken === 'ETH' ? 18 : 6).toString();
-          const tx = await stakeAndCreateP2PChallengeClient({
-            participantAddress: '0x0000000000000000000000000000000000000000',
-            stakeAmountWei: stakeInWei,
-            paymentToken: selectedTokenAddress,
-            pointsReward: '100',
-            metadataURI: 'ipfs://bafytest',
-          });
-          onchainTxHash = tx.transactionHash;
-          toast({ title: 'On-chain stake complete', description: `TX: ${onchainTxHash.slice(0,10)}...` });
-        } catch (e: any) {
-          console.warn('Creator on-chain stake failed, falling back to server-only create:', e?.message || e);
-          toast({ title: 'On-chain stake failed', description: 'Creating challenge off-chain instead.', variant: 'warning' });
-        }
-      }
-
-      // Update transaction hash then get the Privy auth token
-      requestBody.append('transactionHash', onchainTxHash || '');
       const token = await getAccessToken();
       
       console.log(`\n🔐 About to call /api/challenges/create-p2p`);
@@ -446,8 +465,8 @@ export default function Challenges() {
     },
     onSuccess: () => {
       toast({
-        title: "Challenge Created",
-        description: "Your challenge has been created and sent!",
+        title: "✅ Challenge Created On-Chain!",
+        description: "Your challenge is now live. Waiting for opponent to accept...",
       });
       queryClient.invalidateQueries({ queryKey: ["/api/challenges"] });
       setIsCreateDialogOpen(false);
@@ -463,6 +482,15 @@ export default function Challenges() {
         toast({
           title: "Unauthorized",
           description: "Please log in to create a challenge",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      if (error.message.includes('On-chain')) {
+        toast({
+          title: "Blockchain Error",
+          description: error.message,
           variant: "destructive",
         });
         return;

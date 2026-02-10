@@ -313,6 +313,21 @@ export default function Friends() {
           metadataURI: 'ipfs://bafytest',
         });
         console.log('Creator stake+create tx:', tx.transactionHash);
+        // If we have a tx hash and the server returned a challengeId, attach the tx to the challenge
+        try {
+          const challengeId = response?.challengeId || response?.id;
+          if (tx?.transactionHash && challengeId) {
+            const txHash = typeof tx.transactionHash === 'string' ? tx.transactionHash.trim() : String(tx.transactionHash);
+            if (/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+              await apiRequest('POST', `/api/challenges/${challengeId}/creator-confirm-stake`, { transactionHash: txHash });
+              console.log(`Attached tx to challenge ${challengeId}: ${txHash}`);
+            } else {
+              console.warn('Received non-standard tx hash, skipping attach:', txHash);
+            }
+          }
+        } catch (attachErr) {
+          console.warn('Failed to attach transactionHash to challenge:', attachErr);
+        }
       } catch (blockchainError: any) {
         console.warn('Blockchain submission failed, but challenge is stored in DB:', blockchainError);
         // Don't throw - challenge is already in DB, user can retry signing later

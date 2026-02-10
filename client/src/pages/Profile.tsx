@@ -42,7 +42,7 @@ export default function Profile() {
   });
 
   const { data: userProfile } = useQuery({
-    queryKey: [`/api/users/${user.id}/profile`],
+    queryKey: user?.id ? [`/api/users/${user.id}/profile`] : ["profile-disabled"],
     enabled: !!user?.id,
     retry: false,
   });

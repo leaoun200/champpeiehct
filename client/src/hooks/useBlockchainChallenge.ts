@@ -7,12 +7,13 @@ import { useState, useEffect } from 'react';
 const ERC20_ABI = [
   'function approve(address spender, uint256 amount) returns (bool)',
   'function allowance(address owner, address spender) view returns (uint256)',
+  'function balanceOf(address account) view returns (uint256)',
 ];
 
 const CHALLENGE_FACTORY_ABI = [
   'function createP2PChallenge(address participant, address paymentToken, uint256 stakeAmount, uint256 pointsReward, string calldata metadataURI) returns (uint256)',
-  'function stakeAndCreateP2PChallenge(address participant,address paymentToken,uint256 stakeAmount,uint256 creatorSide,uint256 pointsReward,string metadataURI,uint256 permitDeadline,uint8 v,bytes32 r,bytes32 s) payable returns (uint256)',
-  'function acceptP2PChallenge(uint256 challengeId, uint256 participantSide, uint256 permitDeadline, uint8 v, bytes32 r, bytes32 s) payable',
+  'function stakeAndCreateP2PChallenge(address participant, address paymentToken, uint256 stakeAmount, uint256 creatorSide, uint256 pointsReward, string metadataURI) payable returns (uint256)',
+  'function acceptP2PChallenge(uint256 challengeId) payable',
   'function challenges(uint256 challengeId) view returns (tuple(uint256 id, uint8 challengeType, address creator, address participant, address paymentToken, uint256 stakeAmount, uint256 pointsReward, uint8 status, address winner, uint256 createdAt, uint256 resolvedAt, string metadataURI, uint8 creatorSide, uint8 participantSide, bool creatorStaked, bool participantStaked, uint256 stakedAt, uint256 refundRequestedAt, bool refundAccepted) challenge)',
 ];
 
@@ -115,57 +116,7 @@ export function useBlockchainChallenge() {
    * Try to produce an EIP-2612 permit signature for the token.
    * Returns an object { deadline, v, r, s } on success or null on failure.
    */
-  const trySignPermit = async (
-    tokenAddress: string,
-    owner: string,
-    spender: string,
-    value: bigint,
-    signer: any,
-    provider: any
-  ) => {
-    try {
-      const token = new ethers.Contract(tokenAddress, ['function name() view returns (string)', 'function nonces(address) view returns (uint256)'], provider);
-      const name = await token.name();
-      const nonce = await token.nonces(owner);
-      const chain = await provider.getNetwork();
-      const chainId = chain.chainId;
-
-      const deadline = Math.floor(Date.now() / 1000) + 3600; // 1 hour
-
-      const domain = {
-        name: name,
-        version: '1',
-        chainId: chainId,
-        verifyingContract: tokenAddress,
-      };
-
-      const types = {
-        Permit: [
-          { name: 'owner', type: 'address' },
-          { name: 'spender', type: 'address' },
-          { name: 'value', type: 'uint256' },
-          { name: 'nonce', type: 'uint256' },
-          { name: 'deadline', type: 'uint256' },
-        ],
-      } as any;
-
-      const message = {
-        owner: owner,
-        spender: spender,
-        value: value.toString(),
-        nonce: nonce.toString(),
-        deadline: deadline,
-      };
-
-      // Sign typed data (EIP-712)
-      const signature = await (signer as any)._signTypedData(domain, types, message);
-      const sig = ethers.splitSignature(signature);
-      return { deadline, v: sig.v, r: sig.r, s: sig.s };
-    } catch (e) {
-      console.warn('Permit signing failed or token does not support EIP-2612:', e?.message || e);
-      return null;
-    }
-  };
+  // Permit removed - using traditional approve for simplicity
 
   /**
    * Switch wallet to specified chain
@@ -395,26 +346,47 @@ export function useBlockchainChallenge() {
       // Access the provider based on wallet type
       let provider = null;
 
-      if (wallet.walletClientType === 'privy') {
+      if ((wallet as any).walletClientType === 'privy') {
+        console.log('  → Using Privy embedded wallet');
         // Embedded Privy wallet
-        provider = new ethers.BrowserProvider((wallet as any).getEthereumProvider?.() || (wallet as any).provider as any);
+        const ethProvider = (wallet as any).getEthereumProvider?.() || (wallet as any).provider;
+        console.log('  → Got Ethereum provider:', !!ethProvider);
+        provider = new ethers.BrowserProvider(ethProvider as any);
       } else {
+        console.log('  → Using external wallet (MetaMask, Rainbow, etc.)');
         // External wallet (Rainbow, MetaMask, etc.)
         if ((window as any).ethereum) {
+          console.log('  → window.ethereum available');
+          // CRITICAL: For external wallets, we MUST request accounts first
+          // This prompts the user to connect their accounts if needed
+          try {
+            console.log('  → Requesting accounts from wallet...');
+            const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+            console.log('  → Accounts connected:', accounts?.length > 0 ? `${accounts.length} account(s)` : 'none');
+            if (!accounts || accounts.length === 0) {
+              throw new Error('No accounts connected. Please connect at least one account in your wallet.');
+            }
+          } catch (e: any) {
+            console.error('  ❌ Failed to request accounts:', e?.message || e);
+            throw new Error(`Failed to connect wallet: ${e?.message || 'Unknown error'}`);
+          }
           provider = new ethers.BrowserProvider((window as any).ethereum);
         } else {
+          console.error('❌ ERROR: No Ethereum provider available');
           throw new Error('No Ethereum provider available. Please install a Web3 wallet like MetaMask.');
         }
       }
 
       if (!provider) {
+        console.error('❌ ERROR: Provider is null after creation');
         throw new Error('Ethereum provider not available');
       }
 
       // Get the signer from the provider
+      console.log('  → Getting signer from provider...');
       const signer = await provider.getSigner();
       if (!signer) {
-        throw new Error('Failed to get signer from wallet');
+        throw new Error('Failed to get signer from wallet. Please ensure wallet is unlocked and has accounts.');
       }
 
       const userAddress = await signer.getAddress();
@@ -450,61 +422,35 @@ export function useBlockchainChallenge() {
       const pointsWei = BigInt(params.pointsReward);
 
       // Check and handle ERC20 allowance (only for non-ETH tokens)
-      let permitParams: { deadline: number; v: number; r: string; s: string } | null = null;
-      const ZERO_BYTES32 = '0x' + '00'.repeat(32);
-
       if (params.paymentToken !== '0x0000000000000000000000000000000000000000') {
         const tokenContract = new ethers.Contract(params.paymentToken, ERC20_ABI, signer);
-        console.log('  → Checking allowance on token contract...');
+        console.log('  → Checking balance and allowance on token contract...');
+        const balance = await tokenContract.balanceOf(userAddress);
         const allowance = await tokenContract.allowance(userAddress, FACTORY_ADDRESS);
-        console.log('  → Got allowance value');
         const tokenLower = params.paymentToken.toLowerCase();
+        
+        console.log(`  → Balance: ${balance.toString()} wei, Allowance: ${allowance.toString()} wei, Need: ${stakeWei.toString()} wei`);
+
+        if (balance < stakeWei) {
+          throw new Error(`Insufficient USDC balance. Have: ${balance.toString()} wei, Need: ${stakeWei.toString()} wei`);
+        }
 
         if (allowance < stakeWei) {
-          // Try to get an EIP-2612 permit signature first
-          try {
-            const provider = (wallet as any).walletClientType === 'privy'
-              ? new ethers.BrowserProvider((wallet as any).getEthereumProvider?.() || (wallet as any).provider as any)
-              : new ethers.BrowserProvider((window as any).ethereum);
-
-            const permit = await trySignPermit(params.paymentToken, userAddress, FACTORY_ADDRESS, stakeWei, signer, provider);
-            if (permit) {
-              permitParams = permit as any;
-              console.log('✅ Obtained permit signature for token spend');
-            } else {
-              // Determine token name based on address
-              let tokenName = 'TOKEN';
-              if (tokenLower === '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0') {
-                tokenName = 'USDT';
-              } else if (tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
-                tokenName = 'USDC';
-              }
-              console.log(`🔓 Approving ${tokenName} for Challenge Factory...`);
-              toast({
-                title: 'Allowance Required',
-                description: `Please approve ${tokenName} spend in your wallet...`,
-              });
-              const approveTx = await tokenContract.approve(FACTORY_ADDRESS, stakeWei);
-              await approveTx.wait();
-              console.log(`✅ ${tokenName} approved!`);
-            }
-          } catch (e) {
-            console.warn('Permit attempt failed, falling back to approve:', e?.message || e);
-            // Fallback to approve
-            let tokenName = 'TOKEN';
-            if (tokenLower === '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0') {
-              tokenName = 'USDT';
-            } else if (tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
-              tokenName = 'USDC';
-            }
-            toast({
-              title: 'Allowance Required',
-              description: `Please approve ${tokenName} spend in your wallet...`,
-            });
-            const approveTx = await tokenContract.approve(FACTORY_ADDRESS, stakeWei);
-            await approveTx.wait();
-            console.log(`✅ ${tokenName} approved!`);
+          // Get token name for user message
+          let tokenName = 'TOKEN';
+          if (tokenLower === '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0') {
+            tokenName = 'USDT';
+          } else if (tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
+            tokenName = 'USDC';
           }
+          console.log(`🔓 Approving ${tokenName} for Challenge Factory...`);
+          toast({
+            title: 'Allowance Required',
+            description: `Please approve ${tokenName} spend in your wallet...`,
+          });
+          const approveTx = await tokenContract.approve(FACTORY_ADDRESS, stakeWei);
+          await approveTx.wait();
+          console.log(`✅ ${tokenName} approved!`);
         }
       }
 
@@ -571,9 +517,24 @@ export function useBlockchainChallenge() {
         
         let tx;
         if (isNativeETH) {
-          tx = await contract.acceptP2PChallenge(params.challengeId, { value: stakeWei });
+          // For native ETH, include value in options
+          tx = await contract.createP2PChallenge(
+            checksummedOpponent,
+            checksummedToken,
+            stakeWei,
+            pointsWei,
+            params.metadataURI || '',
+            { value: stakeWei }
+          );
         } else {
-          tx = await contract.acceptP2PChallenge(params.challengeId);
+          // For ERC20 tokens, no msg.value needed (token already approved)
+          tx = await contract.createP2PChallenge(
+            checksummedOpponent,
+            checksummedToken,
+            stakeWei,
+            pointsWei,
+            params.metadataURI || ''
+          );
         }
 
         console.log(`⏳ Transaction submitted: ${tx.hash}`);
@@ -672,6 +633,19 @@ export function useBlockchainChallenge() {
         // External wallet (Rainbow, MetaMask, etc.)
         if ((window as any).ethereum) {
           console.log('  → window.ethereum available');
+          // CRITICAL: For external wallets, we MUST request accounts first
+          // This prompts the user to connect their accounts if needed
+          try {
+            console.log('  → Requesting accounts from wallet...');
+            const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+            console.log('  → Accounts connected:', accounts?.length > 0 ? `${accounts.length} account(s)` : 'none');
+            if (!accounts || accounts.length === 0) {
+              throw new Error('No accounts connected. Please connect at least one account in your wallet.');
+            }
+          } catch (e: any) {
+            console.error('  ❌ Failed to request accounts:', e?.message || e);
+            throw new Error(`Failed to connect wallet: ${e?.message || 'Unknown error'}`);
+          }
           provider = new ethers.BrowserProvider((window as any).ethereum);
         } else {
           console.error('❌ ERROR: No Ethereum provider available');
@@ -722,21 +696,25 @@ export function useBlockchainChallenge() {
       if (params.paymentToken !== '0x0000000000000000000000000000000000000000') {
         const tokenContract = new ethers.Contract(params.paymentToken, ERC20_ABI, signer);
         const allowance = await tokenContract.allowance(userAddress, FACTORY_ADDRESS);
+        const balance = await tokenContract.balanceOf(userAddress);
         const tokenLower = params.paymentToken.toLowerCase();
         
+        console.log(`  → Balance: ${balance.toString()}, Allowance: ${allowance.toString()}, Need: ${stakeWei.toString()}`);
+
+        if (balance < stakeWei) {
+          const tokenName = tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e' ? 'USDC' : 'TOKEN';
+          throw new Error(`Insufficient ${tokenName} balance`);
+        }
+        
         if (allowance < stakeWei) {
-          // Determine token name based on address
+          // Get token name and request approval
           let tokenName = 'TOKEN';
           if (tokenLower === '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0') {
             tokenName = 'USDT';
           } else if (tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
             tokenName = 'USDC';
           }
-          console.log(`🔓 Approving ${tokenName} for Challenge Factory...`);
-          toast({
-            title: 'Allowance Required',
-            description: `Please approve ${tokenName} spend in your wallet...`,
-          });
+          toast({ title: 'Allowance Required', description: `Please approve ${tokenName} spend in your wallet...` });
           const approveTx = await tokenContract.approve(FACTORY_ADDRESS, stakeWei);
           await approveTx.wait();
           console.log(`✅ ${tokenName} approved!`);
@@ -781,15 +759,11 @@ export function useBlockchainChallenge() {
         try {
           if (isNativeETH) {
             console.log(`  → Sending native ETH: ${stakeWei.toString()} wei`);
-            tx = await contract.acceptP2PChallenge(params.challengeId, params.participantSide, 0, 0, ZERO_BYTES32, ZERO_BYTES32, { value: stakeWei });
+            tx = await contract.acceptP2PChallenge(params.challengeId, { value: stakeWei });
           } else {
             console.log(`  → Sending ERC20 token (no value needed)`);
-            console.log(`  → Calling contract.acceptP2PChallenge(${params.challengeId}, ${params.participantSide})`);
-            if (permitParams) {
-              tx = await contract.acceptP2PChallenge(params.challengeId, params.participantSide, permitParams.deadline, permitParams.v, permitParams.r, permitParams.s);
-            } else {
-              tx = await contract.acceptP2PChallenge(params.challengeId, params.participantSide, 0, 0, ZERO_BYTES32, ZERO_BYTES32);
-            }
+            console.log(`  → Calling contract.acceptP2PChallenge(${params.challengeId})`);
+            tx = await contract.acceptP2PChallenge(params.challengeId);
           }
           console.log(`✅ Transaction signed! Hash: ${tx.hash}`);
         } catch (signError: any) {
@@ -846,17 +820,43 @@ export async function stakeAndCreateP2PChallengeClient(params: {
   paymentToken: string;
   pointsReward: string;
   metadataURI?: string;
+  ethereumProvider?: any; // Optional: pass wallet provider from Privy
 }) {
   // Lightweight wrapper that delegates to the on-chain contract using ethers
   // This mirrors logic in create/accept functions but keeps it simple for callers.
-  const { participantAddress, stakeAmountWei, paymentToken, pointsReward, metadataURI } = params;
+  const { participantAddress, stakeAmountWei, paymentToken, pointsReward, metadataURI, ethereumProvider } = params;
 
   console.log('🔗 [stakeAndCreateP2PChallengeClient] Starting on-chain stake creation...');
   
-  // Use window.ethereum or throw if not available — callers should ensure wallet connected
-  if (!(window as any).ethereum) throw new Error('No wallet provider available');
-  const provider = new ethers.BrowserProvider((window as any).ethereum as any);
+  // Use provided provider or fall back to window.ethereum
+  let provider = null;
+  if (ethereumProvider) {
+    provider = new ethers.BrowserProvider(ethereumProvider);
+    console.log('📱 Using provided wallet provider');
+  } else if ((window as any).ethereum) {
+    console.log('📱 Using window.ethereum provider');
+    // CRITICAL: For external wallets, we MUST request accounts first
+    // This prompts the user to connect their accounts if needed
+    try {
+      console.log('  → Requesting accounts from wallet...');
+      const accounts = await (window as any).ethereum.request({ method: 'eth_requestAccounts' });
+      console.log('  → Accounts connected:', accounts?.length > 0 ? `${accounts.length} account(s)` : 'none');
+      if (!accounts || accounts.length === 0) {
+        throw new Error('No accounts connected. Please connect at least one account in your wallet.');
+      }
+    } catch (e: any) {
+      console.error('  ❌ Failed to request accounts:', e?.message || e);
+      throw new Error(`Failed to connect wallet: ${e?.message || 'Unknown error'}`);
+    }
+    provider = new ethers.BrowserProvider((window as any).ethereum as any);
+  } else {
+    throw new Error('No wallet provider available. Please connect your wallet.');
+  }
+  
   const signer = await provider.getSigner();
+  if (!signer) {
+    throw new Error('Unable to get signer from wallet. Please ensure your wallet is unlocked and connected.');
+  }
   
   // Get the current chain ID to determine the correct factory address
   const network = await provider.getNetwork();
@@ -903,26 +903,56 @@ export async function stakeAndCreateP2PChallengeClient(params: {
   const isNative = paymentToken === '0x0000000000000000000000000000000000000000';
   const stakeBig = BigInt(stakeAmountWei);
 
-  // Try EIP-2612 permit client-side similarly to accept flow
-  let permit = null;
+  // Check and handle ERC20 allowance if needed
   if (!isNative) {
     try {
-      const providerForPermit = provider;
-      permit = await trySignPermit(paymentToken, await signer.getAddress(), FACTORY_ADDRESS, stakeBig, signer, providerForPermit);
+      const tokenContract = new ethers.Contract(paymentToken, ERC20_ABI, signer);
+      const ownerAddr = await signer.getAddress();
+      
+      // Check balance first
+      const balance = await tokenContract.balanceOf(ownerAddr);
+      console.log(`💰 Token balance: ${balance.toString()} wei`);
+      if (balance < stakeBig) {
+        throw new Error(`Insufficient balance. Have: ${balance.toString()} wei, Need: ${stakeBig.toString()} wei`);
+      }
+      
+      // Then check allowance
+      const currentAllowance = await tokenContract.allowance(ownerAddr, FACTORY_ADDRESS);
+      if (BigInt(currentAllowance.toString ? currentAllowance.toString() : currentAllowance) < stakeBig) {
+        console.log('🔐 Approving token spend for factory...');
+        const approveTx = await tokenContract.approve(FACTORY_ADDRESS, stakeBig);
+        console.log('⏳ Waiting for approve tx to confirm...', approveTx.hash);
+        await approveTx.wait();
+        console.log('✅ Approve confirmed');
+      } else {
+        console.log('✅ Existing allowance sufficient, no approve needed');
+      }
     } catch (e) {
-      permit = null;
+      console.warn('Failed to check balance/allowance:', e?.message || e);
+      throw e; // Throw to prevent contract call with insufficient balance
     }
   }
 
-  const ZERO_BYTES32 = '0x' + '00'.repeat(32);
-
   let tx;
   if (isNative) {
-    tx = await factory.stakeAndCreateP2PChallenge(participantAddress, paymentToken, stakeBig, 0, pointsReward, metadataURI || '', 0, 0, ZERO_BYTES32, ZERO_BYTES32, { value: stakeBig });
-  } else if (permit) {
-    tx = await factory.stakeAndCreateP2PChallenge(participantAddress, paymentToken, stakeBig, 0, pointsReward, metadataURI || '', permit.deadline, permit.v, permit.r, permit.s);
+    tx = await factory.stakeAndCreateP2PChallenge(
+      participantAddress,
+      paymentToken,
+      stakeBig,
+      0, // creatorSide
+      pointsReward,
+      metadataURI || '',
+      { value: stakeBig }
+    );
   } else {
-    tx = await factory.stakeAndCreateP2PChallenge(participantAddress, paymentToken, stakeBig, 0, pointsReward, metadataURI || '', 0, 0, ZERO_BYTES32, ZERO_BYTES32);
+    tx = await factory.stakeAndCreateP2PChallenge(
+      participantAddress,
+      paymentToken,
+      stakeBig,
+      0, // creatorSide
+      pointsReward,
+      metadataURI || ''
+    );
   }
 
   const receipt = await tx.wait();

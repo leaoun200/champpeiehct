@@ -343,6 +343,22 @@ router.post('/create-p2p', PrivyAuthMiddleware, upload.single('coverImage'), asy
       console.log(`    - coverImage: ${req.file.originalname} (${req.file.size} bytes, ${req.file.mimetype})`);
     }
 
+    // Normalize and mask incoming transactionHash to avoid storing malformed values
+    const rawTx = transactionHash;
+    let normalizedTx: string | null = null;
+    if (typeof rawTx === 'string') {
+      const t = rawTx.trim();
+      if (t !== '' && t.toLowerCase() !== 'undefined' && t.toLowerCase() !== 'null' && /^0x[a-fA-F0-9]{64}$/.test(t)) {
+        normalizedTx = t;
+      }
+    }
+
+    const maskedTxLog = normalizedTx
+      ? `${normalizedTx.substring(0, 10)}...${normalizedTx.substring(normalizedTx.length - 4)}`
+      : (typeof rawTx === 'string' && rawTx.trim() !== '' ? `INVALID(${String(rawTx).slice(0,20)})` : 'NONE');
+
+    console.log(`    - received transactionHash (masked): ${maskedTxLog}`);
+
     if (!userId) {
       console.error('❌ User ID not found in request');
       return res.status(401).json({ error: 'Not authenticated' });
@@ -370,6 +386,15 @@ router.post('/create-p2p', PrivyAuthMiddleware, upload.single('coverImage'), asy
     // Off-chain creation: status stays 'pending' or 'open', onChainStatus stays 'pending'
     // Creator does NOT stake at this point.
     
+    // NEW MODEL (v2): Challenge MUST have on-chain transaction hash at creation
+    // Off-chain only creation is no longer supported
+    if (!normalizedTx || !/^0x[0-9a-f]{64}$/.test(normalizedTx)) {
+      return res.status(400).json({
+        error: 'Challenge creation requires a blockchain transaction hash. Please sign the transaction first.',
+        message: 'Ensure you have called the blockchain creation function and received a valid transactionHash (0x...)',
+      });
+    }
+
     // Parse and validate dueDate (optional). Default to 24h from now if not provided.
     const parsedDueDate = dueDate ? new Date(dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000);
     if (isNaN(parsedDueDate.getTime()) || parsedDueDate.getTime() <= Date.now()) {
@@ -397,10 +422,11 @@ router.post('/create-p2p', PrivyAuthMiddleware, upload.single('coverImage'), asy
         dueDate: parsedDueDate,
         paymentTokenAddress: paymentToken,
         stakeAmountWei: BigInt(ethers.parseUnits(stakeAmount, tokenDecimals).toString()),
-        onChainStatus: 'pending', // No transaction yet
-        creatorStaked: false,
+        onChainStatus: 'pending', // Will be updated below when tx is confirmed
+        creatorStaked: true, // Marked as staked since tx hash is provided
         acceptorStaked: false,
         pointsAwarded: creationPoints,
+        creatorTransactionHash: normalizedTx, // Store tx immediately
         settlementType: settlementType || 'voting',
       })
       .returning();
@@ -454,11 +480,15 @@ router.post('/create-p2p', PrivyAuthMiddleware, upload.single('coverImage'), asy
         .where(eq(challenges.id, challengeId));
     }
 
-    // Award creation points to the creator
+    // Award creation points to the creator IMMEDIATELY since tx is now required
+    // and provided at creation time
     try {
+      // Store creator transaction hash for traceability (already done above)
+      await db.update(challenges).set({ onChainStatus: 'pending', creatorStaked: true }).where(eq(challenges.id, challengeId));
+
       const pointsWei = BigInt(Math.floor(creationPoints * 1e18));
-      console.log(`🎁 Challenge creator will earn ${creationPoints} Bantah Points`);
-      
+      console.log(`🎁 Crediting ${creationPoints} Bantah Points to creator (tx: ${normalizedTx.substring(0, 10)}...)`);
+
       // Record points transaction in history
       await recordPointsTransaction({
         userId,
@@ -466,16 +496,16 @@ router.post('/create-p2p', PrivyAuthMiddleware, upload.single('coverImage'), asy
         transactionType: 'creation_reward',
         amount: Number(pointsWei),
         reason: `Created P2P challenge: "${title}"`,
-        blockchainTxHash: null,
+        blockchainTxHash: normalizedTx,
         createdAt: new Date(),
       });
-      
+
       // Update user's actual points balance
       await db.execute(sql`UPDATE users SET points = points + ${creationPoints} WHERE id = ${userId}`);
-      
+
       // Sync the userPointsLedgers table with the updated balance
       await updateUserPointsBalance(userId);
-      
+
       // Create transaction record for points earned
       await db.insert(transactions).values({
         userId,
@@ -485,7 +515,7 @@ router.post('/create-p2p', PrivyAuthMiddleware, upload.single('coverImage'), asy
         status: 'completed',
         createdAt: new Date(),
       });
-      
+
       console.log(`✅ Points transaction recorded: ${creationPoints} points to creator`);
     } catch (pointsError) {
       console.error('❌ Failed to record creation points:', pointsError);
@@ -580,9 +610,69 @@ router.post('/create-p2p', PrivyAuthMiddleware, upload.single('coverImage'), asy
     res.json({
       success: true,
       challengeId,
-      message: 'Challenge created off-chain. Waiting for opponent to accept and stake.',
+      message: 'Challenge created on-chain and saved to database. Ready for opponent to accept and match stakes!',
     });
   } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * PATCH /api/challenges/:id/attach-tx
+ * Attach a transaction hash to an existing challenge after off-chain creation.
+ * Body: { transactionHash: string, role?: 'creator'|'acceptor' }
+ */
+router.patch('/:id/attach-tx', PrivyAuthMiddleware, async (req: Request, res: Response) => {
+  try {
+    const challengeId = parseInt(req.params.id);
+    const userId = req.user?.id;
+    const { transactionHash, role } = req.body || {};
+
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    if (!transactionHash || typeof transactionHash !== 'string') return res.status(400).json({ error: 'Missing transactionHash' });
+
+    const tx = transactionHash.trim();
+    if (!/^0x[0-9a-fA-F]{64}$/.test(tx)) return res.status(400).json({ error: 'Invalid transactionHash format' });
+
+    const dbChallenge = await db.select().from(challenges).where(eq(challenges.id, challengeId)).limit(1);
+    if (!dbChallenge.length) return res.status(404).json({ error: 'Challenge not found' });
+
+    const chall = dbChallenge[0];
+
+    // Only allow creator to attach creator tx, acceptor to attach acceptor tx, or admins
+    const isCreator = chall.challenger === userId;
+    const isAcceptor = chall.challenged === userId;
+    const userIsAdmin = req.user?.roles?.includes?.('admin');
+
+    const effectiveRole = role === 'acceptor' ? 'acceptor' : (role === 'creator' ? 'creator' : (isCreator ? 'creator' : (isAcceptor ? 'acceptor' : null)));
+    if (!effectiveRole) return res.status(403).json({ error: 'Not authorized to attach tx for this challenge' });
+    if (effectiveRole === 'creator' && !isCreator && !userIsAdmin) return res.status(403).json({ error: 'Only creator or admin can attach creator tx' });
+    if (effectiveRole === 'acceptor' && !isAcceptor && !userIsAdmin) return res.status(403).json({ error: 'Only acceptor or admin can attach acceptor tx' });
+
+    const normalized = tx.toLowerCase();
+
+    if (effectiveRole === 'creator') {
+      await db.update(challenges).set({ creatorTransactionHash: normalized, creatorStaked: true, onChainStatus: chall.acceptorStaked ? 'matching' : 'pending' }).where(eq(challenges.id, challengeId));
+      // Note: Points awarding is handled elsewhere when a validated tx is first stored.
+    } else {
+      await db.update(challenges).set({ acceptorTransactionHash: normalized, acceptorStaked: true, onChainStatus: chall.creatorStaked ? 'matching' : 'pending', challenged: chall.challenged || userId }).where(eq(challenges.id, challengeId));
+    }
+
+    // If both staked, activate
+    const updated = await db.select().from(challenges).where(eq(challenges.id, challengeId)).limit(1);
+    const uc = updated[0];
+    if (uc.creatorStaked && uc.acceptorStaked) {
+      const createdAt = uc.createdAt ? new Date(uc.createdAt).getTime() : Date.now();
+      const origDue = uc.dueDate ? new Date(uc.dueDate).getTime() : createdAt + 24 * 60 * 60 * 1000;
+      const origDuration = Math.max(origDue - createdAt, 15 * 60 * 1000);
+      const newVotingEndsAt = new Date(Date.now() + origDuration);
+
+      await db.update(challenges).set({ status: 'active', onChainStatus: 'active', votingEndsAt: newVotingEndsAt }).where(eq(challenges.id, challengeId));
+    }
+
+    res.json({ success: true, challengeId, attachedTo: effectiveRole, transactionHash: normalized });
+  } catch (error: any) {
+    console.error('Failed to attach tx:', error);
     res.status(500).json({ error: error.message });
   }
 });
