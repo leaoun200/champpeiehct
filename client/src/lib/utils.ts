@@ -198,7 +198,7 @@ export function getDisplayCurrency(
       return {
         currency: 'USDC',
         amount: usdcAmount,
-        logo: getCurrencyLogo('0x833589fCD6eDb6E08f4c7C32D4f71b3566dA8860'), // USDC address
+        logo: getCurrencyLogo('0x036CBD53842c5426634e7929541ec2318f3dcf7e'), // USDC address
       };
     }
     

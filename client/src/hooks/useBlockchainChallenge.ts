@@ -12,7 +12,7 @@ const ERC20_ABI = [
 
 const CHALLENGE_FACTORY_ABI = [
   'function createP2PChallenge(address participant, address paymentToken, uint256 stakeAmount, uint256 pointsReward, string calldata metadataURI) returns (uint256)',
-  'function stakeAndCreateP2PChallenge(address participant, address paymentToken, uint256 stakeAmount, uint256 creatorSide, uint256 pointsReward, string metadataURI) payable returns (uint256)',
+  'function stakeAndCreateP2PChallenge(address participant, address paymentToken, uint256 stakeAmount, uint256 creatorSide, uint256 pointsReward, string metadataURI, uint256 permitDeadline, uint8 v, bytes32 r, bytes32 s) payable returns (uint256)',
   'function acceptP2PChallenge(uint256 challengeId) payable',
   'function challenges(uint256 challengeId) view returns (tuple(uint256 id, uint8 challengeType, address creator, address participant, address paymentToken, uint256 stakeAmount, uint256 pointsReward, uint8 status, address winner, uint256 createdAt, uint256 resolvedAt, string metadataURI, uint8 creatorSide, uint8 participantSide, bool creatorStaked, bool participantStaked, uint256 stakedAt, uint256 refundRequestedAt, bool refundAccepted) challenge)',
 ];
@@ -297,6 +297,10 @@ export function useBlockchainChallenge() {
    */
   const createP2PChallenge = async (params: CreateP2PChallengeParams): Promise<TransactionResult> => {
     try {
+      // Normalize addresses to lowercase to avoid checksum issues
+      params.opponentAddress = params.opponentAddress.toLowerCase();
+      params.paymentToken = params.paymentToken.toLowerCase();
+      
       if (!user) {
         throw new Error('User not authenticated');
       }
@@ -438,7 +442,7 @@ export function useBlockchainChallenge() {
         if (allowance < stakeWei) {
           // Get token name for user message
           let tokenName = 'TOKEN';
-          if (tokenLower === '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0') {
+          if (tokenLower === '0x3c499c542cef5e3811e1192ce70d8cc7d307b653') {
             tokenName = 'USDT';
           } else if (tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
             tokenName = 'USDC';
@@ -454,14 +458,16 @@ export function useBlockchainChallenge() {
         }
       }
 
-      // Checksum addresses to ensure proper format for ethers.js v6
-      console.log(`🔍 Checksumming addresses...`);
+      // Normalize and checksum addresses 
+      console.log(`🔍 Normalizing and checksumming addresses...`);
       console.log(`   Raw opponent: ${params.opponentAddress}`);
       console.log(`   Raw token: ${params.paymentToken}`);
       
       let checksummedOpponent, checksummedToken;
       try {
-        checksummedOpponent = ethers.getAddress(params.opponentAddress);
+        // First normalize to lowercase, then checksum
+        const opponentLower = params.opponentAddress.toLowerCase();
+        checksummedOpponent = ethers.getAddress(opponentLower);
         console.log(`   ✓ Opponent checksummed: ${checksummedOpponent}`);
       } catch (e) {
         console.error(`   ✗ Failed to checksum opponent address:`, e);
@@ -469,7 +475,9 @@ export function useBlockchainChallenge() {
       }
       
       try {
-        checksummedToken = ethers.getAddress(params.paymentToken);
+        // First normalize to lowercase, then checksum
+        const tokenLower = params.paymentToken.toLowerCase();
+        checksummedToken = ethers.getAddress(tokenLower);
         console.log(`   ✓ Token checksummed: ${checksummedToken}`);
       } catch (e) {
         console.error(`   ✗ Failed to checksum token address:`, e);
@@ -576,6 +584,10 @@ export function useBlockchainChallenge() {
       console.log('='.repeat(80));
       console.log('🚀 START: acceptP2PChallenge()');
       console.log('='.repeat(80));
+      
+      // Normalize token address to lowercase to avoid checksum issues
+      params.paymentToken = params.paymentToken.toLowerCase();
+      
       console.log('📥 Received params:', {
         challengeId: params.challengeId,
         stakeAmount: params.stakeAmount,
@@ -709,7 +721,7 @@ export function useBlockchainChallenge() {
         if (allowance < stakeWei) {
           // Get token name and request approval
           let tokenName = 'TOKEN';
-          if (tokenLower === '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0') {
+          if (tokenLower === '0x3c499c542cef5e3811e1192ce70d8cc7d307b653') {
             tokenName = 'USDT';
           } else if (tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
             tokenName = 'USDC';
@@ -740,9 +752,16 @@ export function useBlockchainChallenge() {
       return await retryTransaction(async () => {
         console.log(`💳 Awaiting user to sign transaction...`);
 
-        // ✅ FIX: Define checksummedToken that was missing
-        const checksummedToken = ethers.getAddress(params.paymentToken);
-  console.log('✅ Checksummed token:', checksummedToken);
+        // ✅ FIX: Normalize address to lowercase before checksumming
+        let checksummedToken;
+        try {
+          const tokenLower = params.paymentToken.toLowerCase();
+          checksummedToken = ethers.getAddress(tokenLower);
+          console.log('✅ Checksummed token:', checksummedToken);
+        } catch (e) {
+          console.error('❌ Failed to checksum token address:', e);
+          throw new Error(`Invalid token address: ${params.paymentToken}`);
+        }
 
         // Contract supports both ETH and ERC20 tokens
         const isNativeETH = checksummedToken === '0x0000000000000000000000000000000000000000';
@@ -824,7 +843,11 @@ export async function stakeAndCreateP2PChallengeClient(params: {
 }) {
   // Lightweight wrapper that delegates to the on-chain contract using ethers
   // This mirrors logic in create/accept functions but keeps it simple for callers.
-  const { participantAddress, stakeAmountWei, paymentToken, pointsReward, metadataURI, ethereumProvider } = params;
+  let { participantAddress, stakeAmountWei, paymentToken, pointsReward, metadataURI, ethereumProvider } = params;
+
+  // Normalize addresses to lowercase to avoid ethers.js checksum validation errors
+  participantAddress = participantAddress.toLowerCase();
+  paymentToken = paymentToken.toLowerCase();
 
   console.log('🔗 [stakeAndCreateP2PChallengeClient] Starting on-chain stake creation...');
   
@@ -858,10 +881,56 @@ export async function stakeAndCreateP2PChallengeClient(params: {
     throw new Error('Unable to get signer from wallet. Please ensure your wallet is unlocked and connected.');
   }
   
-  // Get the current chain ID to determine the correct factory address
-  const network = await provider.getNetwork();
-  const chainId = Number(network.chainId);
+  // Get the current chain ID
+  let network = await provider.getNetwork();
+  let chainId = Number(network.chainId);
   console.log(`📡 Detected chain ID: ${chainId}`);
+  
+  // CRITICAL: Force switch to Base Sepolia (84532) before proceeding
+  const TARGET_CHAIN_ID = 84532; // Base Sepolia
+  const TARGET_CHAIN_ID_HEX = '0x' + TARGET_CHAIN_ID.toString(16); // 0x14a34
+  
+  if (chainId !== TARGET_CHAIN_ID) {
+    console.log(`🔄 Current chain (${chainId}) is not Base Sepolia (${TARGET_CHAIN_ID}). Requesting network switch...`);
+    try {
+      // Try to switch to Base Sepolia
+      await (window as any).ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId: TARGET_CHAIN_ID_HEX }],
+      });
+      console.log('✅ Successfully switched to Base Sepolia');
+      
+      // Refresh network info after switch
+      network = await provider.getNetwork();
+      chainId = Number(network.chainId);
+      console.log(`📡 Updated chain ID: ${chainId}`);
+    } catch (switchError: any) {
+      // If chain doesn't exist in wallet, request to add it
+      if (switchError.code === 4902) {
+        console.log('⚠️ Base Sepolia not in wallet. Requesting to add it...');
+        try {
+          await (window as any).ethereum.request({
+            method: 'wallet_addEthereumChain',
+            params: [{
+              chainId: TARGET_CHAIN_ID_HEX,
+              chainName: 'Base Sepolia',
+              rpcUrls: ['https://sepolia.base.org'],
+              blockExplorerUrls: ['https://sepolia.basescan.org'],
+            }],
+          });
+          console.log('✅ Base Sepolia added and switched to');
+          network = await provider.getNetwork();
+          chainId = Number(network.chainId);
+        } catch (addError) {
+          console.error('❌ Failed to add Base Sepolia to wallet:', addError);
+          throw new Error('Failed to add Base Sepolia to wallet. Please add it manually.');
+        }
+      } else {
+        console.error('❌ Failed to switch to Base Sepolia:', switchError.message);
+        throw new Error(`Failed to switch to Base Sepolia: ${switchError.message}`);
+      }
+    }
+  }
   
   // Determine factory address based on chain
   let FACTORY_ADDRESS = '';
@@ -893,6 +962,18 @@ export async function stakeAndCreateP2PChallengeClient(params: {
   if (!FACTORY_ADDRESS || FACTORY_ADDRESS === 'null' || FACTORY_ADDRESS === 'undefined') {
     throw new Error(`Invalid contract address for chain ${chainId}. Please check your environment variables.`);
   }
+
+  // Normalize factory address to lowercase to avoid ethers.js checksum validation errors
+  FACTORY_ADDRESS = FACTORY_ADDRESS.toLowerCase();
+  
+  // Verify contract exists before attempting any calls
+  console.log(`🔍 Verifying contract exists at ${FACTORY_ADDRESS}...`);
+  const contractCode = await provider.getCode(FACTORY_ADDRESS);
+  if (contractCode === '0x') {
+    console.error(`❌ No contract code found at factory address: ${FACTORY_ADDRESS}`);
+    throw new Error(`Contract not deployed at ${FACTORY_ADDRESS}. Please verify the contract address for chain ${chainId}.`);
+  }
+  console.log(`✅ Contract verified at ${FACTORY_ADDRESS}`);
   
   const factory = new ethers.Contract(
     FACTORY_ADDRESS,
@@ -903,11 +984,25 @@ export async function stakeAndCreateP2PChallengeClient(params: {
   const isNative = paymentToken === '0x0000000000000000000000000000000000000000';
   const stakeBig = BigInt(stakeAmountWei);
 
+  console.log(`💳 Payment token is ${isNative ? 'native ETH (no token contract needed)' : 'ERC20 token'}`);
+
   // Check and handle ERC20 allowance if needed
   if (!isNative) {
     try {
       const tokenContract = new ethers.Contract(paymentToken, ERC20_ABI, signer);
       const ownerAddr = await signer.getAddress();
+      
+      console.log(`🔍 Checking token contract code at ${paymentToken}...`);
+      
+      // First, check if contract code exists at the address
+      const contractCode = await provider.getCode(paymentToken);
+      if (contractCode === '0x') {
+        console.warn(`⚠️ No contract found at token address: ${paymentToken}`);
+        console.warn(`   This token address may be incorrect for chain ID ${chainId}`);
+        throw new Error(`No contract code found at token address ${paymentToken}. Please verify the token address is correct for this network.`);
+      }
+      
+      console.log(`💰 Checking balance for token contract ${paymentToken} at chain ${chainId}...`);
       
       // Check balance first
       const balance = await tokenContract.balanceOf(ownerAddr);
@@ -917,6 +1012,7 @@ export async function stakeAndCreateP2PChallengeClient(params: {
       }
       
       // Then check allowance
+      console.log(`🔐 Checking allowance for factory: ${FACTORY_ADDRESS}`);
       const currentAllowance = await tokenContract.allowance(ownerAddr, FACTORY_ADDRESS);
       if (BigInt(currentAllowance.toString ? currentAllowance.toString() : currentAllowance) < stakeBig) {
         console.log('🔐 Approving token spend for factory...');
@@ -927,34 +1023,100 @@ export async function stakeAndCreateP2PChallengeClient(params: {
       } else {
         console.log('✅ Existing allowance sufficient, no approve needed');
       }
-    } catch (e) {
-      console.warn('Failed to check balance/allowance:', e?.message || e);
-      throw e; // Throw to prevent contract call with insufficient balance
+    } catch (e: any) {
+      console.error('❌ Failed during token operations:', e?.message || e);
+      console.error('📍 Token Contract:', paymentToken);
+      console.error('📍 Chain ID:', chainId);
+      console.error('📍 Factory Address:', FACTORY_ADDRESS);
+      
+      // If the error is about contract being unreachable, provide helpful guidance
+      if (e?.code === 'CALL_EXCEPTION' || e?.message?.includes('missing revert data') || e?.message?.includes('No contract code found')) {
+        console.error('⚠️ Token contract issue detected:');
+        console.error('   - The token address might be incorrect for this chain');
+        console.error('   - The token contract may not be deployed on this chain');
+        console.error('   - Please verify you are on the correct network');
+      }
+      throw e; // Always throw to let user know about token issues
     }
+  } else {
+    console.log('✅ Using native ETH - skipping token validation');
   }
+
+  console.log(`🔗 Calling factory.stakeAndCreateP2PChallenge with:`);
+  console.log(`   Participant: ${participantAddress}`);
+  console.log(`   PaymentToken: ${paymentToken}`);
+  console.log(`   StakeAmount: ${stakeBig.toString()} wei`);
+  console.log(`   PointsReward: ${pointsReward}`);
+  console.log(`   MetadataURI: ${metadataURI || '(none)'}`);
+
+  // Permit parameters (using traditional approve, so pass dummy values)
+  const permitDeadline = 0; // Not using permit
+  const v = 0;
+  const r = '0x0000000000000000000000000000000000000000000000000000000000000000';
+  const s = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
   let tx;
-  if (isNative) {
-    tx = await factory.stakeAndCreateP2PChallenge(
-      participantAddress,
-      paymentToken,
-      stakeBig,
-      0, // creatorSide
-      pointsReward,
-      metadataURI || '',
-      { value: stakeBig }
-    );
-  } else {
-    tx = await factory.stakeAndCreateP2PChallenge(
-      participantAddress,
-      paymentToken,
-      stakeBig,
-      0, // creatorSide
-      pointsReward,
-      metadataURI || ''
-    );
+  try {
+    if (isNative) {
+      console.log(`💳 Sending transaction with native ETH value: ${stakeBig.toString()} wei`);
+      tx = await factory.stakeAndCreateP2PChallenge(
+        participantAddress,
+        paymentToken,
+        stakeBig,
+        0, // creatorSide
+        pointsReward,
+        metadataURI || '',
+        permitDeadline,
+        v,
+        r,
+        s,
+        { value: stakeBig }
+      );
+    } else {
+      console.log(`💳 Sending transaction with ERC20 token`);
+      tx = await factory.stakeAndCreateP2PChallenge(
+        participantAddress,
+        paymentToken,
+        stakeBig,
+        0, // creatorSide
+        pointsReward,
+        metadataURI || '',
+        permitDeadline,
+        v,
+        r,
+        s
+      );
+    }
+    console.log(`✅ Transaction sent! Hash: ${tx.hash}`);
+  } catch (contractError: any) {
+    console.error('❌ Contract call failed:', contractError?.message || contractError);
+    console.error('   Contract Address:', FACTORY_ADDRESS);
+    console.error('   Function: stakeAndCreateP2PChallenge');
+    console.error('   Is Native ETH:', isNative);
+    console.error('   Stake Amount:', stakeBig.toString());
+    
+    // Provide helpful error messages
+    if (contractError?.message?.includes('missing revert data')) {
+      console.error('⚠️ The contract call failed with no revert data. Possible causes:');
+      console.error('   - Function signature mismatch');
+      console.error('   - Contract does not exist at this address');
+      console.error('   - Contract is not properly initialized');
+    } else if (contractError?.message?.includes('invalid address')) {
+      console.error('⚠️ Invalid address in parameters');
+    } else if (contractError?.message?.includes('insufficient funds')) {
+      console.error('⚠️ Insufficient funds to pay gas');
+    }
+    
+    throw contractError;
   }
 
+  console.log(`⏳ Waiting for transaction ${tx.hash} to be mined...`);
   const receipt = await tx.wait();
-  return { transactionHash: receipt.transactionHash, blockNumber: receipt.blockNumber };
+  
+  if (!receipt) {
+    throw new Error('Transaction failed: No receipt returned');
+  }
+  
+  console.log(`✅ Transaction mined at block ${receipt.blockNumber}`);
+  return { transactionHash: tx.hash, blockNumber: receipt.blockNumber };
 }

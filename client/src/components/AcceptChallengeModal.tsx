@@ -206,7 +206,7 @@ export function AcceptChallengeModal({
         sendServerLog('Open challenge flow started', { challengeId: enrichedChallenge.id, opponentSide }, 'info');
 
         // Use the same payment token fallback as P2P flow
-        const paymentToken = enrichedChallenge.paymentTokenAddress || '0x833589fCD6eDb6E08f4c7C32D4f71b3566dA8860';
+        const paymentToken = enrichedChallenge.paymentTokenAddress || '0x036cbd53842c5426634e7929541ec2318f3dcf7e';
 
         // Call the blockchain hook to perform accept on-chain
         let onchainResult = null;
@@ -279,14 +279,14 @@ export function AcceptChallengeModal({
         console.log('⛓️ P2P Challenge - Initiating blockchain transaction...');
         console.log('   Challenge ID:', enrichedChallenge.id);
         console.log('   Stake Amount (wei):', enrichedChallenge.stakeAmountWei);
-        console.log('   Payment Token:', enrichedChallenge.paymentTokenAddress || '0x833589fCD6eDb6E08f4c7C32D4f71b3566dA8860');
+        console.log('   Payment Token:', enrichedChallenge.paymentTokenAddress || '0x036cbd53842c5426634e7929541ec2318f3dcf7e');
 
         console.log('   Converted stake to:', stakeWei);
 
         console.log('   Challenge details for contract call:', {
           id: Number(enrichedChallenge.id),
           stakeAmount: stakeWei,
-          paymentToken: enrichedChallenge.paymentTokenAddress || '0x833589fCD6eDb6E08f4c7C32D4f71b3566dA8860',
+          paymentToken: enrichedChallenge.paymentTokenAddress || '0x036cbd53842c5426634e7929541ec2318f3dcf7e',
           creatorSide: creatorSide,
           opponentSide: opponentSide
         });
@@ -294,7 +294,7 @@ export function AcceptChallengeModal({
         const result = await acceptP2PChallenge({
           challengeId: Number(enrichedChallenge.id),
           stakeAmount: stakeWei,
-          paymentToken: enrichedChallenge.paymentTokenAddress || '0x833589fCD6eDb6E08f4c7C32D4f71b3566dA8860',
+          paymentToken: enrichedChallenge.paymentTokenAddress || '0x036cbd53842c5426634e7929541ec2318f3dcf7e',
           pointsReward: '0',
           participantSide: participantSideValue
         });

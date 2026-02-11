@@ -58,7 +58,7 @@ export const CHAIN_CONFIG: Record<ChainId, ChainConfig> = {
     },
     tokens: {
       eth: '0x0000000000000000000000000000000000000000',
-      usdc: '0x833589fCD6eDb6E08f4c7C32D4f71b3566dA8860',
+      usdc: '0x036cbd53842c5426634e7929541ec2318f3dcf7e',
       usdt: '0x3c499c542cEF5E3811e1192ce70d8cC7d307B653',
     },
   },

@@ -268,11 +268,11 @@ export default function Friends() {
 
   const { createP2PChallenge } = useBlockchainChallenge();
 
-  // Token address mapping for Base Sepolia
+  // Token address mapping for Base Sepolia (using lowercase to avoid checksum issues)
   const TOKEN_ADDRESSES: Record<'ETH' | 'USDT' | 'USDC', string> = {
     'ETH': '0x4200000000000000000000000000000000000006', // Wrapped ETH on Base
-    'USDT': '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0', // USDT on Base Sepolia (lowercase)
-    'USDC': '0x036cbd53842c5426634e7929541ec2318f3dcf7e', // USDC on Base Sepolia (lowercase)
+    'USDT': '0x3c499c542cef5e3811e1192ce70d8cc7d307b653', // USDT on Base Sepolia
+     'USDC': '0x036cbd53842c5426634e7929541ec2318f3dcf7e', // USDC on Base Sepolia
   };
 
   const createChallengeMutation = useMutation({

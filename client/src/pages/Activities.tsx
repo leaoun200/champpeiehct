@@ -248,11 +248,12 @@ export default function Activities() {
         
         // Check if it's an address
         if (tokenStr.startsWith('0x')) {
-          if (tokenStr === '0x4200000000000000000000000000000000000006') {
+          const tokenLower = tokenStr.toLowerCase();
+          if (tokenLower === '0x4200000000000000000000000000000000000006') {
             return 'ETH';
-          } else if (tokenStr === '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0') {
+          } else if (tokenLower === '0x3c499c542cef5e3811e1192ce70d8cc7d307b653') {
             return 'USDT';
-          } else if (tokenStr === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
+          } else if (tokenLower === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
             return 'USDC';
           }
         }

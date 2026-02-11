@@ -41,7 +41,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 
 import { apiRequest } from "@/lib/queryClient";
-import { useBlockchainChallenge } from '@/hooks/useBlockchainChallenge';
+import { useBlockchainChallenge, stakeAndCreateP2PChallengeClient } from '@/hooks/useBlockchainChallenge';
 import { parseUnits } from 'ethers';
 import { useToast } from "@/hooks/use-toast";
 import { isUnauthorizedError } from "@/lib/authUtils";
@@ -311,11 +311,12 @@ export default function Challenges() {
     };
   }, [queryClient]);
 
-  // Token address mapping for Base Sepolia
+  // Token address mapping for Base Sepolia (from environment template)
   // NOTE: Use address(0) for native ETH
+  // NOTE: Using lowercase addresses to avoid ethers.js checksum validation issues
   const TOKEN_ADDRESSES: Record<'ETH' | 'USDT' | 'USDC', string> = {
     'ETH': '0x0000000000000000000000000000000000000000', // Native ETH (zero address)
-    'USDT': '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0', // USDT on Base Sepolia
+    'USDT': '0x3c499c542cef5e3811e1192ce70d8cc7d307b653', // USDT on Base Sepolia
     'USDC': '0x036cbd53842c5426634e7929541ec2318f3dcf7e', // USDC on Base Sepolia
   };
 
@@ -355,6 +356,12 @@ export default function Challenges() {
         const stakeInWei = parseUnits(formData.amount.toString(), formData.paymentToken === 'ETH' ? 18 : 6).toString();
         
         console.log('📝 Initiating on-chain challenge creation...');
+        console.log(`   Network: Base Sepolia (84532)`);
+        console.log(`   Token: ${formData.paymentToken} (${selectedTokenAddress})`);
+        console.log(`   Amount: ${formData.amount} (${stakeInWei} wei)`);
+        console.log(`   Note: Wallet will be switched to Base Sepolia if needed`);
+        console.log(`   Note: For testnet, use ETH. ERC20 tokens may not be deployed on testnet.`);
+        
         
         if (formData.challengeType === 'open') {
           // For OPEN challenges, use stakeAndCreateP2PChallengeClient
@@ -366,6 +373,9 @@ export default function Challenges() {
             pointsReward: '100',
             metadataURI: 'ipfs://bafytest',
           });
+          if (!result || !result.transactionHash) {
+            throw new Error('Transaction failed: No transaction hash returned from blockchain');
+          }
           onchainTxHash = result.transactionHash;
           console.log(`✅ Open challenge created on-chain: ${onchainTxHash.slice(0,10)}...`);
         } else {
@@ -381,11 +391,16 @@ export default function Challenges() {
             pointsReward: '100',
             metadataURI: 'ipfs://bafytest',
           });
+          if (!result || !result.transactionHash) {
+            throw new Error('Transaction failed: No transaction hash returned from blockchain');
+          }
           onchainTxHash = result.transactionHash;
           console.log(`✅ P2P challenge created on-chain: ${onchainTxHash.slice(0,10)}...`);
         }
       } catch (e: any) {
         console.error('❌ On-chain creation failed:', e?.message || e);
+        console.error('   Selected token:', selectedTokenAddress);
+        console.error('   Amount:', formData.amount);
         // If on-chain fails, the whole creation fails - no fallback to off-chain
         throw new Error(`On-chain challenge creation failed: ${e?.message || e}`);
       }
@@ -488,9 +503,16 @@ export default function Challenges() {
       }
       
       if (error.message.includes('On-chain')) {
+        let errorMsg = error.message;
+        
+        // Suggest ETH if token contract issues
+        if (error.message.includes('token') || error.message.includes('Token') || error.message.includes('No contract code found')) {
+          errorMsg += '\n\n💡 Tip: On testnet, use ETH instead. ERC20 tokens may not be deployed on Base Sepolia testnet.';
+        }
+        
         toast({
           title: "Blockchain Error",
-          description: error.message,
+          description: errorMsg,
           variant: "destructive",
         });
         return;

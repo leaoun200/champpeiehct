@@ -221,7 +221,7 @@ const ProfileCard: React.FC<ProfileCardProps> = ({ userId, onClose }) => {
       try {
         const TOKEN_ADDRESSES: Record<'ETH' | 'USDT' | 'USDC', string> = {
           'ETH': '0x0000000000000000000000000000000000000000',
-          'USDT': '0x9eba6af5f65ecb20e65c0c9e0b5cdbbbe9c5c00c0',
+          'USDT': '0x3c499c542cef5e3811e1192ce70d8cc7d307b653',
           'USDC': '0x036cbd53842c5426634e7929541ec2318f3dcf7e',
         };
 
