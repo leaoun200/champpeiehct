@@ -80,17 +80,19 @@ export function MobileNavigation({
   const handleNavigation = (path: string, item?: any) => {
     // Handle create button specially
     if (item?.isCreateButton) {
-      // Trigger create dialog immediately
-      const createEvent = new CustomEvent("open-create-dialog");
-      window.dispatchEvent(createEvent);
-      
-      // If we're not on challenges, optionally navigate there but the event should be caught globally if implemented that way
-      // Or just trigger it. The user specifically said it's only going to /challenges page and not popping up.
-      if (location !== "/challenges" && onCreateClick) {
-         onCreateClick();
-      } else if (onCreateClick) {
-         onCreateClick();
+      // Navigate to challenges if not already there
+      if (location !== "/challenges") {
+        navigate("/challenges");
       }
+      
+      // Dispatch event after navigation (or immediately if already on /challenges)
+      // Use a small delay if navigating to ensure the listener is ready
+      const delay = location !== "/challenges" ? 100 : 0;
+      setTimeout(() => {
+        const createEvent = new CustomEvent("open-create-dialog");
+        window.dispatchEvent(createEvent);
+      }, delay);
+      
       return;
     }
 

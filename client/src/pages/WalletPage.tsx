@@ -721,7 +721,8 @@ export default function WalletPage() {
           </Button>
         </div>
 
-        {/* Recent Transactions */}
+        {/* Recent Transactions - Hidden for now */}
+        {false && (
         <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border border-slate-200 dark:border-slate-700 mt-8 sm:mt-12">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white">
@@ -850,6 +851,7 @@ export default function WalletPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Deposit Modal */}
         <Dialog open={isDepositModalOpen} onOpenChange={setIsDepositModalOpen}>

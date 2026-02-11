@@ -713,6 +713,18 @@ export default function Challenges() {
     }
   }, [usersError, toast]);
 
+  // Handle open create dialog event from mobile nav
+  useEffect(() => {
+    const handleOpenCreateDialog = () => {
+      setIsCreateDialogOpen(true);
+    };
+
+    window.addEventListener("open-create-dialog", handleOpenCreateDialog);
+    return () => {
+      window.removeEventListener("open-create-dialog", handleOpenCreateDialog);
+    };
+  }, []);
+
   if (!user) {
     // Allow unauthenticated users to view challenges but show login prompts for actions
   }
@@ -1246,7 +1258,7 @@ export default function Challenges() {
         />
       )}
 
-      <MobileNavigation />
+      <MobileNavigation onCreateClick={() => setIsCreateDialogOpen(true)} />
     </div>
   );
 }
