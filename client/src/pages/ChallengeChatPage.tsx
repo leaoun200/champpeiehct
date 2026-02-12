@@ -446,7 +446,7 @@ export default function ChallengeChatPage() {
             </TabsContent>
 
             <TabsContent value="activity" className="m-0 p-4 h-full data-[state=inactive]:hidden overflow-y-auto">
-              {activityEvents.length === 0 ? (
+              {!activityEvents || activityEvents.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-slate-500">
                   <Activity className="w-12 h-12 mb-4 opacity-20" />
                   <p>No activity yet</p>

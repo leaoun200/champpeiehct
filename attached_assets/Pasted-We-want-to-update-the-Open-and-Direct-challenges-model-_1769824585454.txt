@@ -25,5 +25,3 @@ What if the Creator gets a notification that his challenge has been accepted and
 This is good 
 
 Now make sure Chat room will not open for that challenge if no Challenge is accepted ( which of course means both have staked and escrow and countdown is active. 
-You’ve hit the Free plan limit for GPT-5.
-You need GPT-5 to continue this chat

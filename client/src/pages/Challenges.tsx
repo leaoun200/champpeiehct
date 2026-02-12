@@ -114,7 +114,7 @@ export default function Challenges() {
   const [opponentSearchTerm, setOpponentSearchTerm] = useState("");
   const [selectedChallenge, setSelectedChallenge] = useState<any>(null);
   const [showChat, setShowChat] = useState(false);
-  const [challengeStatusTab, setChallengeStatusTab] = useState<'all' | 'p2p' | 'house'>('all');
+  const [challengeStatusTab, setChallengeStatusTab] = useState<'all' | 'p2p' | 'house' | 'ended'>('all');
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [selectedTab, setSelectedTab] = useState<string>('featured');
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
@@ -294,10 +294,37 @@ export default function Challenges() {
       }
     };
 
-    // Listen for when users join challenges  
-    const handleChallengeJoined = (data: any) => {
-      if (data.type === 'challenge_joined' || data.challengeId) {
+    // Listen for when users join/accept challenges
+    const handleChallengeJoined = async (data: any) => {
+      try {
+        if (!(data?.type === 'challenge_joined' || data?.challengeId)) {
+          return;
+        }
+
+        // Always refresh the challenge list
         queryClient.invalidateQueries({ queryKey: ["/api/challenges"] });
+
+        const challengeId = data.challengeId || data.challenge?.id || data.id;
+        if (!challengeId) return;
+
+        // If the payload indicates the challenge is now active, open the chat for participants
+        const status = data.status || data.challenge?.status;
+        if (status === 'active' && user) {
+          try {
+            const res = await fetch(`/api/challenges/${challengeId}`, { credentials: 'include' });
+            if (!res.ok) return;
+            const ch = await res.json();
+            const isParticipant = ch && (ch.challengerId === user?.id || ch.challengedId === user?.id || ch.creatorId === user?.id);
+            if (isParticipant) {
+              setSelectedChallenge(ch);
+              setShowChat(true);
+            }
+          } catch (e) {
+            console.error('Failed to fetch challenge after join event', e);
+          }
+        }
+      } catch (e) {
+        console.error('Realtime challenge-joined handler error', e);
       }
     };
 
@@ -559,11 +586,15 @@ export default function Challenges() {
     // Determine admin-created flag explicitly
     const isAdminCreated = challenge.adminCreated === true;
 
+    // Check if challenge is ended
+    const isEnded = challenge.status === 'completed' || (challenge.dueDate && new Date(challenge.dueDate).getTime() <= Date.now());
+
     // Filter by challenge status or category tab
     const matchesStatus =
       challengeStatusTab === 'all' ? true :
-      challengeStatusTab === 'p2p' ? !isAdminCreated :
-      challengeStatusTab === 'house' ? isAdminCreated :
+      challengeStatusTab === 'p2p' ? !isAdminCreated && !isEnded :
+      challengeStatusTab === 'house' ? isAdminCreated && !isEnded :
+      challengeStatusTab === 'ended' ? isEnded :
       true;
 
     return matchesSearch && matchesCategory && matchesStatus;
@@ -729,6 +760,17 @@ export default function Challenges() {
     // Allow unauthenticated users to view challenges but show login prompts for actions
   }
 
+  // Debug logging for Ended tab
+  useEffect(() => {
+    if (challengeStatusTab === 'ended') {
+      console.log('🔴 ENDED TAB - Challenges shown:');
+      filteredChallenges.forEach(c => {
+        const isEnded = c.status === 'completed' || (c.dueDate && new Date(c.dueDate).getTime() <= Date.now());
+        console.log(`  Challenge #${c.id}: status=${c.status}, dueDate=${c.dueDate}, isEnded=${isEnded}, completed=${c.status === 'completed'}`);
+      });
+    }
+  }, [challengeStatusTab, filteredChallenges]);
+
   const sortedChallenges = [...filteredChallenges].sort((a: any, b: any) => {
     // For "all" tab, sort by newest first
     if (challengeStatusTab === 'all') {
@@ -809,6 +851,12 @@ export default function Challenges() {
                 className="text-xs px-3 py-1.5 rounded-full data-[state=active]:bg-[#7440ff] data-[state=active]:text-white whitespace-nowrap bg-white dark:bg-slate-800 transition-all h-auto font-semibold"
               >
                 HOUSE
+              </TabsTrigger>
+              <TabsTrigger 
+                value="ended" 
+                className="text-xs px-3 py-1.5 rounded-full data-[state=active]:bg-[#7440ff] data-[state=active]:text-white whitespace-nowrap bg-white dark:bg-slate-800 transition-all h-auto font-semibold"
+              >
+                Ended
               </TabsTrigger>
             </TabsList>
           </Tabs>

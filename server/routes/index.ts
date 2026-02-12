@@ -12,6 +12,7 @@ import apiUserRouter from './api-user';
 import apiFriendsRouter from './api-friends';
 import apiFollowersRouter from './api-followers';
 import notificationsRouter from './notificationsApi';
+import apiTelegramRouter from './api-telegram';
 
 export function registerBlockchainRoutes(app: express.Application) {
   /**
@@ -111,6 +112,8 @@ export function registerBlockchainRoutes(app: express.Application) {
    * PUT /api/notifications/preferences - Update notification preferences
    */
   app.use('/api/notifications', notificationsRouter);
+  // Telegram helper endpoints (status, test broadcast)
+  app.use('/api/telegram', apiTelegramRouter);
 
   console.log('✅ Blockchain REST API routes registered:');
   console.log('   - /api/challenges');

@@ -100,16 +100,24 @@ export function AcceptChallengeModal({
         stakeAmountWei: enrichedChallenge.stakeAmountWei,
         amount: enrichedChallenge.amount,
         totalPool: enrichedChallenge.totalPool,
+        paymentTokenAddress: enrichedChallenge.paymentTokenAddress,
         challengerUser: enrichedChallenge.challengerUser,
       });
 
-      // 1) If wei value is present (smallest units, USDC has 6 decimals), prefer that
+      // 1) If wei value is present, determine decimals based on token type and convert
       if (enrichedChallenge.stakeAmountWei) {
         const weiStr = String(enrichedChallenge.stakeAmountWei);
         console.log('✓ Using stakeAmountWei:', weiStr);
         const weiBig = BigInt(weiStr);
-        const usdc = Number(weiBig) / 1e6; // convert to USDC
-        return usdc.toFixed(2);
+        
+        // Determine token decimals based on payment token address
+        const tokenAddr = (enrichedChallenge.paymentTokenAddress || '0x0000000000000000000000000000000000000000').toLowerCase();
+        const decimals = tokenAddr === '0x0000000000000000000000000000000000000000' ? 18 : 6; // ETH=18, tokens=6
+        const divisor = BigInt(10) ** BigInt(decimals);
+        const tokenAmount = Number(weiBig) / Number(divisor);
+        
+        console.log(`✓ Token decimals: ${decimals}, converted amount: ${tokenAmount}`);
+        return tokenAmount.toFixed(2);
       }
 
       // 2) If explicit stakeAmount (per-side) is provided, use it directly
@@ -140,6 +148,27 @@ export function AcceptChallengeModal({
   // For Open Challenges, show creator's side and auto-assign opponent's side
   const creatorSide = enrichedChallenge.challengerSide || 'YES'; // Creator's choice
   const opponentSide = creatorSide === 'YES' ? 'NO' : 'YES'; // Auto-assigned opposite
+
+  // Determine token type for logo display
+  const getTokenLogo = () => {
+    const tokenAddr = (enrichedChallenge.paymentTokenAddress || '0x0000000000000000000000000000000000000000').toLowerCase();
+    if (tokenAddr === '0x0000000000000000000000000000000000000000') {
+      return '/assets/eth-logo.svg'; // ETH logo
+    } else if (tokenAddr === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
+      return '/assets/usd-coin-usdc-logo.svg'; // USDC logo
+    }
+    return '/assets/usd-coin-usdc-logo.svg'; // fallback
+  };
+
+  const getTokenSymbol = () => {
+    const tokenAddr = (enrichedChallenge.paymentTokenAddress || '0x0000000000000000000000000000000000000000').toLowerCase();
+    if (tokenAddr === '0x0000000000000000000000000000000000000000') {
+      return 'ETH';
+    } else if (tokenAddr === '0x036cbd53842c5426634e7929541ec2318f3dcf7e') {
+      return 'USDC';
+    }
+    return 'TOKEN';
+  };
 
   const handleAcceptChallenge = async () => {
     try {
@@ -233,7 +262,7 @@ export function AcceptChallengeModal({
           console.warn('On-chain accept failed:', err?.message || err);
           sendServerLog('On-chain accept failed', { err: String(err?.message || err), challengeId: enrichedChallenge.id }, 'warn');
           // If contract indicates this is not a P2P/on-chain challenge, fall back to server-only accept
-          if (String(err?.message || '').includes('Not P2P challenge')) {
+            if (String(err?.message || '').includes('Not P2P challenge')) {
             console.log('ℹ️ Falling back to server accept-open (no on-chain record)');
             sendServerLog('Falling back to server accept-open', { challengeId: enrichedChallenge.id }, 'warn');
             toast({
@@ -250,13 +279,14 @@ export function AcceptChallengeModal({
             setTransactionHash(result.transactionHash || 'pending');
             setIsSubmitting(false);
 
-            // Close modal after fallback success
-            setTimeout(() => {
-              onSuccess?.();
-              onClose();
-            }, 2000);
+              // Navigate to the challenge chat and close modal after fallback success
+              setLocation(`/challenges/${enrichedChallenge.id}/chat`);
+              setTimeout(() => {
+                onSuccess?.();
+                onClose();
+              }, 1200);
 
-            return;
+              return;
           }
 
           // Otherwise rethrow
@@ -268,12 +298,12 @@ export function AcceptChallengeModal({
           description: `You picked ${opponentSide}. Stakes locked in escrow. Waiting for creator to confirm...`,
         });
 
-        // Close modal after success, don't redirect to chat yet
-        // Chat opens after both stakes are confirmed and challenge becomes ACTIVE
+        // Navigate to the challenge chat and close modal after success
+        setLocation(`/challenges/${enrichedChallenge.id}/chat`);
         setTimeout(() => {
           onSuccess?.();
           onClose();
-        }, 2000);
+        }, 1200);
       } else {
         // For Direct P2P Challenges, use the blockchain flow
         console.log('⛓️ P2P Challenge - Initiating blockchain transaction...');
@@ -307,12 +337,12 @@ export function AcceptChallengeModal({
           description: `Stake confirmed on-chain. Waiting for creator to stake...`,
         });
 
-        // Close modal after success, don't redirect to chat yet
-        // Chat opens when both stakes are confirmed and challenge becomes ACTIVE
+        // Navigate to the challenge chat and close modal after success
+        setLocation(`/challenges/${enrichedChallenge.id}/chat`);
         setTimeout(() => {
           onSuccess?.();
           onClose();
-        }, 2000);
+        }, 1200);
       }
     } catch (err: any) {
       console.error('❌ Failed to accept challenge:', err);
@@ -364,7 +394,7 @@ export function AcceptChallengeModal({
                   {enrichedChallenge.title}
                 </p>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
-                  <img src="/assets/usd-coin-usdc-logo.svg" alt="USDC" className="w-2.5 h-2.5" />
+                  <img src={getTokenLogo()} alt={getTokenSymbol()} className="w-2.5 h-2.5" />
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{stakeInUSDC}</span>
                 </div>
               </div>
@@ -414,14 +444,14 @@ export function AcceptChallengeModal({
             <div>
               <p className="text-xs text-slate-500 mb-0.5">Your Stake</p>
               <div className="flex items-center gap-0.5">
-                <img src="/assets/usd-coin-usdc-logo.svg" alt="USDC" className="w-3 h-3" />
+                <img src={getTokenLogo()} alt={getTokenSymbol()} className="w-3 h-3" />
                 <p className="text-xs font-bold">{stakeInUSDC}</p>
               </div>
             </div>
             <div>
               <p className="text-xs text-slate-500 mb-0.5">to win</p>
               <div className="flex items-center gap-0.5">
-                <img src="/assets/usd-coin-usdc-logo.svg" alt="USDC" className="w-3 h-3" />
+                <img src={getTokenLogo()} alt={getTokenSymbol()} className="w-3 h-3" />
                 <p className="text-xs font-bold">{(Number(stakeInUSDC) * 2).toFixed(2)}</p>
               </div>
             </div>

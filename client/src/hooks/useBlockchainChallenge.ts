@@ -13,7 +13,7 @@ const ERC20_ABI = [
 const CHALLENGE_FACTORY_ABI = [
   'function createP2PChallenge(address participant, address paymentToken, uint256 stakeAmount, uint256 pointsReward, string calldata metadataURI) returns (uint256)',
   'function stakeAndCreateP2PChallenge(address participant, address paymentToken, uint256 stakeAmount, uint256 creatorSide, uint256 pointsReward, string metadataURI, uint256 permitDeadline, uint8 v, bytes32 r, bytes32 s) payable returns (uint256)',
-  'function acceptP2PChallenge(uint256 challengeId) payable',
+  'function acceptP2PChallenge(uint256 challengeId, uint256 participantSide, uint256 permitDeadline, uint8 v, bytes32 r, bytes32 s) payable',
   'function challenges(uint256 challengeId) view returns (tuple(uint256 id, uint8 challengeType, address creator, address participant, address paymentToken, uint256 stakeAmount, uint256 pointsReward, uint8 status, address winner, uint256 createdAt, uint256 resolvedAt, string metadataURI, uint8 creatorSide, uint8 participantSide, bool creatorStaked, bool participantStaked, uint256 stakedAt, uint256 refundRequestedAt, bool refundAccepted) challenge)',
 ];
 
@@ -776,13 +776,34 @@ export function useBlockchainChallenge() {
         let tx;
 
         try {
+          // Prepare permit parameters (not using permit, so use zero values)
+          const permitDeadline = 0;
+          const v = 0;
+          const r = '0x0000000000000000000000000000000000000000000000000000000000000000';
+          const s = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
           if (isNativeETH) {
             console.log(`  → Sending native ETH: ${stakeWei.toString()} wei`);
-            tx = await contract.acceptP2PChallenge(params.challengeId, { value: stakeWei });
+            tx = await contract.acceptP2PChallenge(
+              params.challengeId,
+              params.participantSide,
+              permitDeadline,
+              v,
+              r,
+              s,
+              { value: stakeWei }
+            );
           } else {
             console.log(`  → Sending ERC20 token (no value needed)`);
-            console.log(`  → Calling contract.acceptP2PChallenge(${params.challengeId})`);
-            tx = await contract.acceptP2PChallenge(params.challengeId);
+            console.log(`  → Calling contract.acceptP2PChallenge with participantSide=${params.participantSide}`);
+            tx = await contract.acceptP2PChallenge(
+              params.challengeId,
+              params.participantSide,
+              permitDeadline,
+              v,
+              r,
+              s
+            );
           }
           console.log(`✅ Transaction signed! Hash: ${tx.hash}`);
         } catch (signError: any) {

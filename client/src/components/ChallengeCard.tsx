@@ -562,8 +562,8 @@ export function ChallengeCard({
           </div>
           <div className="flex items-center gap-0.5 flex-shrink-0 flex-wrap">
             <div onClick={(e) => e.stopPropagation()} className="flex items-center gap-0.5">
-              {/* Open P2P challenges in public feed should show "Accept & Stake" button */}
-              {challenge.status === "open" && !challenge.adminCreated && !challenge.challenged && !challenge.challengedUser && (
+              {/* Open P2P challenges in public feed should show "Accept & Stake" button - but NOT if ended */}
+              {challenge.status === "open" && !challenge.adminCreated && !challenge.challenged && !challenge.challengedUser && !isEnded && (
                 <div>
                   {!isAuthenticated ? (
                     <button
@@ -599,8 +599,14 @@ export function ChallengeCard({
                   )}
                 </div>
               )}
-            {/* Only show status badges for open challenges (without specific challenged user) */}
-              {!challenge.challengedUser && challenge.status !== "open" && challenge.status !== "pending" && getStatusBadge(challenge.status)}
+            {/* Show status badges for open challenges or ended P2P challenges */}
+              {isEnded ? (
+                <Badge className="bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-300">
+                  Ended
+                </Badge>
+              ) : (!challenge.challengedUser && challenge.status !== "open" && challenge.status !== "pending") ? (
+                getStatusBadge(challenge.status)
+              ) : null}
               {!challenge.adminCreated && (
                 <Badge className="bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 border-none text-[10px] px-2 py-0.5">
                   P2P
